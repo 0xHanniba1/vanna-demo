@@ -1,0 +1,10 @@
+vanna
+openai
+chromadb
+streamlit
+pandas
+flask
+flasgger
+flask-sock
+anthropic
+PyMySQL

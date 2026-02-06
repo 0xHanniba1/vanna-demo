@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+chromadb_data/
+config.json
+*.png
+.playwright-mcp/
