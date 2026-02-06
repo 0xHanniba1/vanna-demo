@@ -71,19 +71,44 @@ python app_flask.py
 
 ## 训练管理
 
+训练不是每天都要做的事，而是**建库时做一次，答错时补一次**。就像带新员工：入职时给他看文档，犯错时纠正一下，纠正几次后就越来越熟了。
+
+> 注意：日常查询**不会自动**加入知识库。知识库只在你主动运行 `train.py` 时才会变化。
+
+### 什么时候需要训练
+
+| 时机 | 做什么 | 命令 |
+|------|--------|------|
+| **初始化** — 刚接入一个新数据库 | 导入表结构 + 业务文档 + 示例 Q&A | `python train.py` |
+| **数据库变了** — 加了新表、改了字段、业务逻辑变化 | 修改 `train.py` 中的 DDL/文档后重新训练 | `python train.py --reset` |
+| **AI 答错了** — 生成的 SQL 不正确 | 把正确的 question→SQL 喂给它 | `python train.py --add-pair` |
+
+### 命令参考
+
 ```bash
 # 全量训练（首次）
 python train.py
 
-# 清空后重新训练
+# 清空后重新训练（数据库变了时用）
 python train.py --reset
 
 # 查看训练数据统计
 python train.py --show
 
-# 交互式追加 Question→SQL 对
+# 交互式追加 Question→SQL 对（AI 答错了时用）
 python train.py --add-pair
 ```
+
+### 示例：AI 答错后纠正
+
+```bash
+$ python train.py --add-pair
+Question: 上季度 VIP 客户的订单总额
+SQL: SELECT SUM(o.total_amount) AS 总额 FROM orders o JOIN customers c ON o.customer_id = c.id WHERE c.level = 'VIP' AND o.status = '已完成' AND o.order_date >= date('now', '-3 months')
+  + 已添加: 上季度 VIP 客户的订单总额
+```
+
+下次再问类似问题，Vanna 会检索到这个 Q&A 对作为参考，生成更准确的 SQL。
 
 ## 切换到 MySQL
 
