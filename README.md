@@ -79,42 +79,67 @@ python app_flask.py
 
 | 时机 | 做什么 | 命令 |
 |------|--------|------|
-| **初始化** — 刚接入一个新数据库 | 导入表结构 + 业务文档 + 示例 Q&A | `python train.py` |
-| **数据库变了** — 加了新表、改了字段、业务逻辑变化 | 修改 `train.py` 中的 DDL/文档后重新训练 | `python train.py --reset` |
+| **初始化** — 刚接入一个新数据库 | 自动提取表结构并训练 | `python train.py --auto` |
+| **数据库变了** — 加了新表、改了字段 | 清空后重新自动提取 | `python train.py --auto --reset` |
 | **AI 答错了** — 生成的 SQL 不正确 | 把正确的 question→SQL 喂给它 | `python train.py --add-pair` |
+| **补充业务知识** — AI 不理解业务含义 | 追加业务文档 | `python train.py --add-doc` |
 
 ### 命令参考
 
 ```bash
-# 全量训练（首次）
-python train.py
+# 自动从数据库提取表结构并训练（推荐，适合实际项目）
+python train.py --auto
 
-# 清空后重新训练（数据库变了时用）
-python train.py --reset
+# 清空后重新自动提取（数据库结构变了时用）
+python train.py --auto --reset
+
+# 使用内置演示数据训练（仅用于 demo）
+python train.py
 
 # 查看训练数据统计
 python train.py --show
 
 # 交互式追加 Question→SQL 对（AI 答错了时用）
 python train.py --add-pair
+
+# 交互式追加业务文档（补充业务知识）
+python train.py --add-doc
 ```
 
-### 示例：AI 答错后纠正
+### 示例：自动提取 + 补充业务知识 + 纠正错误
 
 ```bash
+# 第一步：自动提取表结构（不用手写 DDL）
+$ python train.py --auto
+=== 从数据库自动提取表结构 ===
+  + departments
+  + employees
+  + customers
+  + products
+  + orders
+自动训练完成！共提取 5 张表。
+
+# 第二步：补充业务文档（帮 AI 理解业务含义）
+$ python train.py --add-doc
+文档: 订单状态包括已完成、处理中、已取消、待付款，统计销售额时只算已完成的
+  + 已添加
+文档: 客户分为VIP、金牌、银牌、普通四个等级
+  + 已添加
+文档:
+（输入空行结束）
+
+# 第三步：日常使用中 AI 答错了，纠正它
 $ python train.py --add-pair
 Question: 上季度 VIP 客户的订单总额
 SQL: SELECT SUM(o.total_amount) AS 总额 FROM orders o JOIN customers c ON o.customer_id = c.id WHERE c.level = 'VIP' AND o.status = '已完成' AND o.order_date >= date('now', '-3 months')
   + 已添加: 上季度 VIP 客户的订单总额
 ```
 
-下次再问类似问题，Vanna 会检索到这个 Q&A 对作为参考，生成更准确的 SQL。
-
 ## 切换到 MySQL
 
 1. 侧边栏数据库类型选 `mysql`，填写连接信息并保存
-2. 修改 `train.py` 中的 `DDL_STATEMENTS` 和 `DOCUMENTATION` 为实际表结构和业务说明
-3. 运行 `python train.py --reset` 重新训练
+2. 运行 `python train.py --auto --reset` 自动提取表结构
+3. 运行 `python train.py --add-doc` 补充业务文档
 
 ## 配置文件示例
 

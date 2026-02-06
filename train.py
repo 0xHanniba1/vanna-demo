@@ -1,9 +1,11 @@
 """
 Vanna 训练脚本：导入 DDL schema、业务文档、Question→SQL 示例对
 用法：
-    python train.py                       # 首次全量训练
+    python train.py                       # 首次全量训练（使用内置演示数据）
+    python train.py --auto                # 自动从数据库提取表结构并训练
     python train.py --reset               # 清空训练数据后重新训练
     python train.py --add-pair            # 交互式追加 question→SQL 对
+    python train.py --add-doc             # 交互式追加业务文档
 """
 import argparse
 import sys
@@ -154,6 +156,77 @@ def train_all(vn, reset=False):
     print(f"\n训练完成！共 {len(DDL_STATEMENTS)} 个 DDL, {len(DOCUMENTATION)} 条文档, {len(QUESTION_SQL_PAIRS)} 个 Q&A 对。")
 
 
+def train_auto(vn, cfg, reset=False):
+    """自动从数据库提取表结构并训练。"""
+    db_type = cfg.get("db_type", "sqlite")
+
+    if reset:
+        print("清空已有训练数据...")
+        vn.remove_collection("ddl")
+        vn.remove_collection("sql")
+        vn.remove_collection("documentation")
+        print("已清空。\n")
+
+    # 1. 自动提取 DDL
+    print("=== 从数据库自动提取表结构 ===")
+    ddl_list = []
+
+    if db_type == "sqlite":
+        import sqlite3
+        db_path = cfg.get("db_path", "demo.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        for table_name, create_sql in cursor.fetchall():
+            if create_sql:
+                ddl_list.append((table_name, create_sql))
+        conn.close()
+
+    elif db_type == "mysql":
+        import pymysql
+        conn = pymysql.connect(
+            host=cfg.get("db_host", "localhost"),
+            user=cfg.get("db_user", "root"),
+            password=cfg.get("db_password", ""),
+            database=cfg.get("db_name", ""),
+            port=cfg.get("db_port", 3306),
+            charset="utf8mb4",
+        )
+        cursor = conn.cursor()
+
+        # 获取所有表名
+        cursor.execute("SHOW TABLES")
+        tables = [row[0] for row in cursor.fetchall()]
+
+        for table_name in tables:
+            # 获取建表语句（包含字段注释）
+            cursor.execute(f"SHOW CREATE TABLE `{table_name}`")
+            create_sql = cursor.fetchone()[1]
+            ddl_list.append((table_name, create_sql))
+
+        conn.close()
+
+    if not ddl_list:
+        print("  未找到任何表，请检查数据库配置。")
+        return
+
+    for table_name, ddl in ddl_list:
+        vn.train(ddl=ddl)
+        print(f"  + {table_name}")
+
+    # 2. 训练基础文档
+    print(f"\n=== 训练基础文档 ===")
+    if db_type == "mysql":
+        db_doc = f"数据库类型是 MySQL，日期函数使用 DATE_FORMAT，当前日期用 CURDATE()，数据库名称是 {cfg.get('db_name', '')}。"
+    else:
+        db_doc = "数据库类型是 SQLite，日期函数使用 strftime，例如 strftime('%Y-%m', date_col) 提取年月。"
+    vn.train(documentation=db_doc)
+    print(f"  + {db_doc[:50]}...")
+
+    print(f"\n自动训练完成！共提取 {len(ddl_list)} 张表。")
+    print("提示：建议运行 python train.py --add-doc 补充业务文档，帮助 AI 理解业务含义。")
+
+
 def add_pair_interactive(vn):
     """交互式追加 question→SQL 对。"""
     print("输入 question→SQL 对（输入空行结束）：\n")
@@ -166,6 +239,18 @@ def add_pair_interactive(vn):
             break
         vn.train(question=question, sql=sql)
         print(f"  + 已添加: {question}\n")
+
+
+def add_doc_interactive(vn):
+    """交互式追加业务文档。"""
+    print("输入业务文档（每行一条，输入空行结束）：")
+    print("例如：订单状态包括已完成、处理中、已取消，统计收入时只算已完成的。\n")
+    while True:
+        doc = input("文档: ").strip()
+        if not doc:
+            break
+        vn.train(documentation=doc)
+        print(f"  + 已添加\n")
 
 
 def show_training_data(vn):
@@ -183,8 +268,10 @@ def show_training_data(vn):
 
 def main():
     parser = argparse.ArgumentParser(description="Vanna 训练脚本")
+    parser.add_argument("--auto", action="store_true", help="自动从数据库提取表结构并训练")
     parser.add_argument("--reset", action="store_true", help="清空已有训练数据后重新训练")
     parser.add_argument("--add-pair", action="store_true", help="交互式追加 question→SQL 对")
+    parser.add_argument("--add-doc", action="store_true", help="交互式追加业务文档")
     parser.add_argument("--show", action="store_true", help="展示当前训练数据统计")
     args = parser.parse_args()
 
@@ -204,6 +291,11 @@ def main():
         show_training_data(vn)
     elif args.add_pair:
         add_pair_interactive(vn)
+    elif args.add_doc:
+        add_doc_interactive(vn)
+    elif args.auto:
+        train_auto(vn, cfg, reset=args.reset)
+        show_training_data(vn)
     else:
         train_all(vn, reset=args.reset)
         show_training_data(vn)
